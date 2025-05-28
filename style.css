@@ -1,4 +1,173 @@
-/* style.css - Can be initially empty or contain very minimal resets if needed */
 body {
-    font-family: Arial, sans-serif; /* Example, though most UI will be in HTML or canvas */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    margin: 0;
+    background-color: #f0f0f0;
+    font-family: Arial, sans-serif;
+    overflow: hidden; 
+}
+
+h1 {
+    margin-bottom: 20px;
+    color: #333;
+    position: absolute; 
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10; 
+}
+
+canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* --- Common Button Enhancements --- */
+#mobileLeftControls button, 
+#mobileRightControls button, 
+#uiOverlay button {
+    color: white;
+    border-radius: 10px; /* Unified border-radius */
+    padding: 10px;    
+    font-size: 16px; /* Unified base font size */
+    min-width: 50px; 
+    min-height: 50px; 
+    text-align: center;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: manipulation;
+    opacity: 0.75; /* Slightly less transparent for better visibility */
+    box-shadow: 0px 2px 5px rgba(0,0,0,0.2); 
+    transition: background-color 0.1s ease, transform 0.05s ease; 
+    border: 1px solid #333; /* Darker border for better definition */
+}
+
+#mobileLeftControls button:active, 
+#mobileRightControls button:active, 
+#uiOverlay button:active {
+    background-color: #777; 
+    transform: translateY(1px); /* Slight press down effect */
+}
+
+
+/* --- Top UI Overlay (Editor buttons) --- */
+#uiOverlay {
+    position: fixed;
+    top: 10px;
+    left: 10px; 
+    z-index: 100;
+    display: flex; 
+    flex-wrap: wrap; /* Allow buttons to wrap */
+    gap: 8px;       /* Spacing between buttons */
+}
+#uiOverlay button {
+    background-color: #4a5568; /* Tailwind-ish gray */
+    border-color: #2d3748;
+    padding: 8px 10px; 
+    font-size: 12px;
+    min-width: auto; /* Allow them to be smaller based on text */
+    min-height: auto; /* Adjust height based on padding */
+    border-radius: 5px; /* Slightly less rounded for smaller buttons */
+}
+#uiOverlay button:active {
+    background-color: #2d3748;
+}
+
+
+/* --- D-Pad Area --- */
+#mobileLeftControls { 
+    position: fixed;
+    bottom: 25px; /* Adjusted spacing */
+    left: 25px;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px; /* Spacing for column items */
+}
+
+#mobileLeftControls button {
+    background-color: #555;
+    border-color: #777;
+    padding: 12px; 
+    min-width: 60px; /* Good tap size for D-pad */
+    min-height: 60px;
+    font-size: 20px; /* Larger font for W,A,S,D */
+}
+
+#mobileLeftControls #leftRightButtons { 
+    display: flex;
+    gap: 20px; /* Increased gap between A and D */
+}
+/* Individual margin for left/right buttons is removed in favor of gap on parent */
+
+
+/* --- Action Buttons Area (Jump, Shoot, Block) --- */
+#mobileRightControls {
+    position: fixed;
+    bottom: 25px; /* Align bottom with D-pad, adjusted */
+    right: 25px;
+    z-index: 100;
+    display: flex;
+    flex-direction: row-reverse; 
+    align-items: center; 
+    gap: 12px; /* Spacing between action buttons */
+}
+
+/* Common styles for action buttons already handled by the top-level selector */
+/* Individual sizing and coloring */
+#mobileRightControls #btnJump { /* Rightmost (primary) */
+    min-width: 80px; 
+    min-height: 80px;
+    padding: 20px;
+    font-size: 18px;
+    background-color: #007bff; /* Blue for Jump */
+    border-color: #0056b3;
+    border-radius: 50%; /* Keep jump circular */
+}
+#mobileRightControls #btnShoot { /* Middle */
+    min-width: 70px;
+    min-height: 70px;
+    font-size: 16px;
+    background-color: #dc3545; /* Red for Shoot */
+    border-color: #a71d2a;
+    border-radius: 50%;
+}
+#mobileRightControls #btnBlock { /* Leftmost */
+    min-width: 70px;
+    min-height: 70px;
+    font-size: 16px;
+    background-color: #28a745; /* Green for Block */
+    border-color: #1e7e34;
+    border-radius: 50%;
+}
+
+
+/* Status Message Styling */
+#statusMessageContainer {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%); 
+    background-color: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 15px 25px;
+    border-radius: 8px;
+    z-index: 200; 
+    display: none; 
+    text-align: center;
+    font-size: 16px;
+}
+
+#statusMessageContainer.error {
+    background-color: rgba(150, 0, 0, 0.8);
+    color: #ffdddd;
+}
+#statusMessageContainer.success {
+    background-color: rgba(0, 100, 0, 0.8);
+    color: #ddffdd;
 }
