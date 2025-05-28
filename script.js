@@ -1,536 +1,360 @@
-// Get the canvas element and its 2D rendering context
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+// Three.js global variables
+let scene, camera, renderer;
+let groundPlane;
+let controls; // For OrbitControls
+let gridHelper; // For editor grid
 
-// Set canvas dimensions
-canvas.width = 800;
-canvas.height = 600;
+// Raycasting variables
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let placementPlane; // Helper plane for initial placements
 
-// Near other global game variables
+// Editor variables
 let gameMode = 'play'; // 'play' or 'edit'
-let selectedBlockType = 'ground'; // In the future, this could change via UI
-const TILE_SIZE = 40; // Define a grid tile size for block placement
+let selectedBlockType = 'ground'; // For block placement
+let currentEditorTool = 'block'; // 'block' or 'enemy'
+const GRID_UNIT_SIZE = 1; // Each block/grid cell is 1x1x1 world unit
 
-// Near the top of script.js, after canvas setup
-const camera = {
-    x: 0,
-    y: 0,
-    // Optional: Add dead zone or smoothing later if needed
-    deadZoneX: canvas.width / 4 // Player can move this much before camera moves
-};
+// Materials and Geometries
+const enemyMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 }); // Red for enemies
+const enemyGeometry = new THREE.SphereGeometry(GRID_UNIT_SIZE / 2, 16, 16); // Sphere for enemies
 
-// Game variables (initial placeholders)
 let player = {
-    x: 50,
-    y: canvas.height - 100, // Start player near the bottom
-    width: 30,
-    height: 50,
-    // color: 'blue', // We might replace this or use it as a fallback
-    dx: 0, // Change in x (velocity)
-    dy: 0, // Change in y (velocity)
-    speed: 5,
-    jumpStrength: 15,
-    isJumping: false,
-    grounded: true,
-    animationState: 'idle', // 'idle', 'run', 'jump'
-    currentFrame: 0,
-    animationFrameCount: { // Number of frames for each placeholder animation
-        idle: 1,
-        run: 2, // e.g., two alternating "frames" for running
-        jump: 1
-    },
-    animationTimer: 0,
-    animationSpeed: 10, // Higher number = slower animation (update every X game loops)
-    
-    // Placeholder appearances (colors for now, could be different sizes too)
-    appearances: {
-        idle: { color: 'blue' },
-        run: [ // Array for multiple frames
-            { color: 'lightblue' },
-            { color: 'cornflowerblue' }
-        ],
-        jump: { color: 'royalblue' }
-    }
+    mesh: null,    
+    width: 1, height: 2, depth: 1,      
+    x: 0, y: 0, z: 0, // Center position
+    dx: 0, dy: 0, dz: 0,         
+    speed: 0.1, jumpStrength: 0.25, gravity: 0.01,   
+    isJumping: false, grounded: false,
 };
 
-const gravity = 1;
-const friction = 0.8; // Friction/damping for horizontal movement
+// Player Reset Constants
+const PLAYER_RESET_X = 0;
+const PLAYER_RESET_Y_OFFSET = player.height / 2; // Player's y-coordinate is its center
+const PLAYER_RESET_Z = 5;
 
-// Basic platform (an array to hold multiple platforms later)
-let platforms = [
-    {
-        x: 0,
-        y: canvas.height - 50,
-        width: canvas.width * 2, // Ensure this width is for the scrollable ground
-        height: 20,
-        // The old 'color' property is removed or ignored
-        appearance: {
-            type: 'ground', // Example type
-            color: 'green'  // Placeholder color, will be replaced by sprite details
-            // Future sprite properties: image: null, sx: 0, sy: 0, sWidth: 0, sHeight: 0
-        }
-    }
-    // Add more platforms here later with their own appearances
-];
 
-// Enemy Array and Creation
-let enemies = [];
+let platforms = [];
+let enemies = []; 
 
-function createEnemy(x, y, width, height, movementType = 'patrol') {
-    return {
-        x: x,
-        y: y,
-        width: width,
-        height: height,
-        dx: 1, // Initial movement direction and speed
-        speed: 1,
-        movementType: movementType, // 'patrol', 'static', etc.
-        originalX: x, // For patrol range
-        patrolRange: 100, // How far to patrol from originalX
-        isDefeated: false, // New property
-        appearance: {
-            color: 'red' // Placeholder color for enemies
-            // Later: image: enemySpriteSheet, sx: 0, sy: 0, ...
-        }
-    };
+const keys = {
+    w: false, s: false, a: false, d: false, space: false
+};
+
+// Helper function for AABB collision detection
+function checkAABBCollision(obj1, obj2) {
+    const obj1MinX = obj1.x - obj1.width / 2; const obj1MaxX = obj1.x + obj1.width / 2;
+    const obj1MinY = obj1.y - obj1.height / 2; const obj1MaxY = obj1.y + obj1.height / 2;
+    const obj1MinZ = obj1.z - obj1.depth / 2; const obj1MaxZ = obj1.z + obj1.depth / 2;
+    const obj2MinX = obj2.x - obj2.width / 2; const obj2MaxX = obj2.x + obj2.width / 2;
+    const obj2MinY = obj2.y - obj2.height / 2; const obj2MaxY = obj2.y + obj2.height / 2;
+    const obj2MinZ = obj2.z - obj2.depth / 2; const obj2MaxZ = obj2.z + obj2.depth / 2;
+    return obj1MaxX > obj2MinX && obj1MinX < obj2MaxX &&
+           obj1MaxY > obj2MinY && obj1MinY < obj2MaxY &&
+           obj1MaxZ > obj2MinZ && obj1MinZ < obj2MaxZ;
 }
 
-// Initialize Enemies
-// Ensure the y position places them on top of the main platform.
-// The main platform is at canvas.height - 50, and is 20px high.
-// So enemy y should be canvas.height - 50 (platform y) - enemy_height.
-const enemyHeight = 30;
-const enemyWidth = 30;
-enemies.push(createEnemy(300, canvas.height - 50 - enemyHeight, enemyWidth, enemyHeight));
-enemies.push(createEnemy(500, canvas.height - 50 - enemyHeight, enemyWidth, enemyHeight, 'patrol'));
 
-
-// Input handling (event listeners for keyboard input)
-const keys = {
-    left: false,
-    right: false,
-    up: false
-};
-
-// --- Level Save/Load Functions ---
 function saveLevel() {
-    if (gameMode !== 'edit') {
-        console.log("Can only save in edit mode.");
-        // alert("Can only save in edit mode."); // Optional: user-facing alert
-        return;
-    }
+    if (gameMode !== 'edit') { console.warn("Can only save in edit mode."); return; }
     try {
-        // For now, saving all platforms. If platforms[0] is special and shouldn't be
-        // part of user-saved levels, it should be filtered out or handled separately.
-        const levelData = platforms.map(p => ({
-            x: p.x,
-            y: p.y,
-            width: p.width, // Save width/height to allow for different block types later
-            height: p.height,
-            appearance: { // Save appearance info
-                type: p.appearance.type,
-                color: p.appearance.color // Or sprite identifiers later
-            }
-        }));
-        localStorage.setItem('platformerLevel', JSON.stringify(levelData));
-        console.log('Level saved to Local Storage!');
-        alert('Level Saved!');
-    } catch (error) {
-        console.error('Error saving level:', error);
-        alert('Error saving level. See console for details.');
-    }
+        const levelData = {
+            platformsData: platforms.map(p => ({
+                x: p.x, y: p.y, z: p.z, width: p.width, height: p.height, depth: p.depth,
+                appearance: { type: p.appearance.type, color: p.appearance.color }
+            })),
+            enemiesData: enemies.map(e => ({
+                x: e.x, y: e.y, z: e.z, type: e.type, speed: e.speed, direction: e.direction,
+                patrolDistance: e.patrolDistance, initialX: e.initialX, initialY: e.initialY, initialZ: e.initialZ
+            }))
+        };
+        localStorage.setItem('platformerLevel3D', JSON.stringify(levelData)); 
+        console.log('3D Level saved!'); alert('3D Level Saved!');
+    } catch (error) { console.error('Error saving 3D level:', error); alert('Error saving level.'); }
 }
 
 function loadLevel() {
-    // gameMode check is handled by the keydown listener
+    if (gameMode !== 'edit') { console.warn("Can only load in edit mode."); return; }
     try {
-        const savedLevelData = localStorage.getItem('platformerLevel');
-        if (savedLevelData) {
-            const loadedPlatforms = JSON.parse(savedLevelData);
-            if (Array.isArray(loadedPlatforms)) {
-                platforms = loadedPlatforms.map(p => ({
-                    ...p, 
-                }));
-                console.log('Level loaded from Local Storage!');
-                alert('Level Loaded!');
-            } else {
-                console.log('No valid level data found in Local Storage.');
-                alert('No valid level data found.');
+        const savedLevelJSON = localStorage.getItem('platformerLevel3D');
+        if (savedLevelJSON) {
+            const levelData = JSON.parse(savedLevelJSON);
+            platforms.forEach(p => { if (p.mesh) { scene.remove(p.mesh); if (p.mesh.geometry) p.mesh.geometry.dispose(); if (p.mesh.material) p.mesh.material.dispose(); }});
+            platforms = [];
+            enemies.forEach(e => { if (e.mesh) scene.remove(e.mesh); });
+            enemies = [];
+
+            if (levelData.platformsData) {
+                levelData.platformsData.forEach(pd => {
+                    const blockGeom = new THREE.BoxGeometry(pd.width, pd.height, pd.depth);
+                    const blockMat = new THREE.MeshStandardMaterial({ color: pd.appearance.color || 0xCD853F });
+                    const newBlockMesh = new THREE.Mesh(blockGeom, blockMat);
+                    newBlockMesh.position.set(pd.x, pd.y, pd.z);
+                    newBlockMesh.castShadow = true; newBlockMesh.receiveShadow = true;
+                    scene.add(newBlockMesh);
+                    platforms.push({ mesh: newBlockMesh, ...pd });
+                });
             }
-        } else {
-            console.log('No saved level found in Local Storage.');
-            alert('No saved level found.');
-        }
-    } catch (error) {
-        console.error('Error loading level:', error);
-        alert('Error loading level. See console for details.');
-    }
+            if (levelData.enemiesData) {
+                levelData.enemiesData.forEach(ed => {
+                    const newEnemyMesh = new THREE.Mesh(enemyGeometry, enemyMaterial); 
+                    newEnemyMesh.position.set(ed.x, ed.y, ed.z);
+                    newEnemyMesh.castShadow = true; scene.add(newEnemyMesh);
+                    enemies.push({
+                        mesh: newEnemyMesh, x: ed.x, y: ed.y, z: ed.z,
+                        type: ed.type || 'basic_patrol_x', speed: ed.speed || 0.02, direction: ed.direction || 1,
+                        patrolDistance: ed.patrolDistance || 3,
+                        initialX: ed.initialX !== undefined ? ed.initialX : ed.x,
+                        initialY: ed.initialY !== undefined ? ed.initialY : ed.y,
+                        initialZ: ed.initialZ !== undefined ? ed.initialZ : ed.z,
+                        width: GRID_UNIT_SIZE, height: GRID_UNIT_SIZE, depth: GRID_UNIT_SIZE 
+                    });
+                });
+            }
+            console.log('3D Level loaded!'); alert('3D Level Loaded!');
+        } else { console.log('No saved 3D level found.'); alert('No saved 3D level found.'); }
+    } catch (error) { console.error('Error loading 3D level:', error); alert('Error loading level.'); }
 }
+
 
 window.addEventListener('keydown', function(e) {
-    // Player movement keys (only active in 'play' mode)
     if (gameMode === 'play') {
-        if (e.key === 'ArrowLeft' || e.key === 'a') {
-            keys.left = true;
-        }
-        if (e.key === 'ArrowRight' || e.key === 'd') {
-            keys.right = true;
-        }
-        if (e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') {
-            keys.up = true;
-        }
+        if (e.key === 'w' || e.key === 'W') keys.w = true;
+        if (e.key === 's' || e.key === 'S') keys.s = true;
+        if (e.key === 'a' || e.key === 'A') keys.a = true;
+        if (e.key === 'd' || e.key === 'D') keys.d = true;
+        if (e.key === ' ') keys.space = true; 
     }
-
-    // Mode toggle and editor-specific keys
-    if (e.key === '0') { // '0' key for editor toggle
-        if (gameMode === 'play') {
-            gameMode = 'edit';
-            console.log('Switched to Edit Mode');
-        } else {
-            gameMode = 'play';
-            console.log('Switched to Play Mode');
-        }
-    } else if (gameMode === 'edit') { // Keys specific to editor mode
-        if (e.key === 's' || e.key === 'S') {
-            saveLevel();
-        } else if (e.key === 'l' || e.key === 'L') {
-            loadLevel();
-        }
+    if (e.key === '0') { 
+        if (gameMode === 'play') { gameMode = 'edit'; if (gridHelper) gridHelper.visible = true; if (controls) controls.enabled = true; 
+            console.log(`Switched to Edit Mode. Current tool: ${currentEditorTool}`);
+        } else { gameMode = 'play'; if (gridHelper) gridHelper.visible = false; console.log('Switched to Play Mode'); }
+    } else if (gameMode === 'edit') { 
+        if (e.key === 's' || e.key === 'S') saveLevel();
+        if (e.key === 'l' || e.key === 'L') loadLevel();
+        if (e.key === 'e' || e.key === 'E') { 
+           currentEditorTool = (currentEditorTool === 'block') ? 'enemy' : 'block';
+           console.log(`Switched to ${currentEditorTool === 'block' ? 'Block' : 'Enemy'} Placement Tool`);
+       }
     }
 });
-
-// In the input handling section
-canvas.addEventListener('click', function(event) {
-    if (gameMode === 'edit') {
-        const rect = canvas.getBoundingClientRect();
-        const mouseX = event.clientX - rect.left;
-        const mouseY = event.clientY - rect.top;
-
-        // Convert screen coordinates to world coordinates (considering camera)
-        const worldX = mouseX + camera.x;
-        const worldY = mouseY + camera.y; // Assuming camera.y is 0 for now or relevant
-
-        // Snap to grid
-        const gridX = Math.floor(worldX / TILE_SIZE) * TILE_SIZE;
-        const gridY = Math.floor(worldY / TILE_SIZE) * TILE_SIZE;
-
-        // Check if a block already exists at this grid location
-        let blockExists = false;
-        let existingBlockIndex = -1;
-        for (let i = 0; i < platforms.length; i++) {
-            if (platforms[i].x === gridX && platforms[i].y === gridY && platforms[i].width === TILE_SIZE && platforms[i].height === TILE_SIZE) {
-                blockExists = true;
-                existingBlockIndex = i;
-                break;
-            }
-        }
-
-        if (blockExists) {
-            platforms.splice(existingBlockIndex, 1);
-            console.log(`Block removed at ${gridX}, ${gridY}`);
-        } else {
-            const mainGround = platforms[0];
-            if (gridX < mainGround.x + mainGround.width &&
-                gridX + TILE_SIZE > mainGround.x &&
-                gridY < mainGround.y + mainGround.height &&
-                gridY + TILE_SIZE > mainGround.y &&
-                platforms.length > 0 && platforms[0].width !== TILE_SIZE 
-                ) {
-                console.log(`Cannot place block: overlaps with main ground at ${gridX}, ${gridY}`);
-                return; 
-            }
-
-            const newPlatform = {
-                x: gridX,
-                y: gridY,
-                width: TILE_SIZE,
-                height: TILE_SIZE,
-                appearance: { 
-                    type: selectedBlockType, 
-                    color: 'saddlebrown' 
-                }
-            };
-            platforms.push(newPlatform);
-            console.log(`Block added at ${gridX}, ${gridY} of type ${selectedBlockType}`);
-        }
-    }
-});
-
 
 window.addEventListener('keyup', function(e) {
-    if (e.key === 'ArrowLeft' || e.key === 'a') {
-        keys.left = false;
-    }
-    if (e.key === 'ArrowRight' || e.key === 'd') {
-        keys.right = false;
-    }
-    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === ' ') {
-        keys.up = false;
+    if (gameMode === 'play') {
+        if (e.key === 'w' || e.key === 'W') keys.w = false;
+        if (e.key === 's' || e.key === 'S') keys.s = false;
+        if (e.key === 'a' || e.key === 'A') keys.a = false;
+        if (e.key === 'd' || e.key === 'D') keys.d = false;
+        if (e.key === ' ') keys.space = false;
     }
 });
 
-// Game loop functions
-function update() {
-    if (gameMode === 'play') {
-        // Player movement logic
-        if (keys.left) {
-            player.dx = -player.speed;
-        } else if (keys.right) {
-            player.dx = player.speed;
-        } else {
-            player.dx *= friction; 
-        }
+function onEditorClick(event) {
+    if (gameMode !== 'edit') return;
+    event.preventDefault(); mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const objectsToIntersect = [placementPlane, ...platforms.map(p => p.mesh).filter(m => m), ...enemies.map(e => e.mesh).filter(m => m)];
+    const intersects = raycaster.intersectObjects(objectsToIntersect, false);
 
-        // Jumping logic
-        if (keys.up && player.grounded && !player.isJumping) {
-            player.dy = -player.jumpStrength;
-            player.isJumping = true;
-            player.grounded = false;
-        }
-
-        // Apply gravity
-        if (!player.grounded) {
-            player.dy += gravity;
-        } else {
-            player.dy = 0; 
-        }
+    if (intersects.length > 0) {
+        const intersect = intersects[0];
+        let placementPosition = new THREE.Vector3(); let normal = intersect.face.normal.clone();
+        normal.transformDirection(intersect.object.matrixWorld);
+        placementPosition.copy(intersect.point).addScaledVector(normal, GRID_UNIT_SIZE / 2);
         
-        // Update player position
-        player.x += player.dx;
-        player.y += player.dy;
+        const gridX = Math.round(placementPosition.x / GRID_UNIT_SIZE) * GRID_UNIT_SIZE;
+        let gridY; const clickedExistingObject = intersect.object !== placementPlane;
 
-        // Determine animation state
-        if (!player.grounded) {
-            player.animationState = 'jump';
-        } else if (Math.abs(player.dx) > 0.1) { 
-            player.animationState = 'run';
-        } else {
-            player.animationState = 'idle';
-        }
+        if (clickedExistingObject && normal.y > 0.9) { 
+             gridY = Math.round( (intersect.object.position.y + (intersect.object.geometry.parameters.height || GRID_UNIT_SIZE) / 2 + GRID_UNIT_SIZE / 2) / GRID_UNIT_SIZE) * GRID_UNIT_SIZE;
+        } else if (intersect.object === placementPlane && normal.y > 0.9) { 
+             gridY = GRID_UNIT_SIZE / 2; 
+        } else { gridY = Math.round(placementPosition.y / GRID_UNIT_SIZE) * GRID_UNIT_SIZE; }
+        const gridZ = Math.round(placementPosition.z / GRID_UNIT_SIZE) * GRID_UNIT_SIZE;
+        const finalY = Math.max(GRID_UNIT_SIZE / 2, gridY); 
 
-        // Animation frame cycling
-        player.animationTimer++;
-        if (player.animationTimer > player.animationSpeed) {
-            player.animationTimer = 0;
-            player.currentFrame++;
-            const currentAnimationFrames = player.animationFrameCount[player.animationState];
-            if (player.currentFrame >= currentAnimationFrames) {
-                player.currentFrame = 0;
+        if (currentEditorTool === 'block') {
+            let blockExists = false; let existingBlockIndex = -1;
+            for (let i = 0; i < platforms.length; i++) {
+                const p = platforms[i];
+                if (Math.abs(p.x - gridX) < 0.1 && Math.abs(p.y - finalY) < 0.1 && Math.abs(p.z - gridZ) < 0.1) {
+                    blockExists = true; existingBlockIndex = i; break; }
+            }
+            if (blockExists && platforms[existingBlockIndex].mesh) { 
+                scene.remove(platforms[existingBlockIndex].mesh);
+                if (platforms[existingBlockIndex].mesh.geometry) platforms[existingBlockIndex].mesh.geometry.dispose();
+                if (platforms[existingBlockIndex].mesh.material) platforms[existingBlockIndex].mesh.material.dispose();
+                platforms.splice(existingBlockIndex, 1); console.log(`3D Block removed.`);
+            } else { 
+                const blockGeom = new THREE.BoxGeometry(GRID_UNIT_SIZE,GRID_UNIT_SIZE,GRID_UNIT_SIZE);
+                const blockMat = new THREE.MeshStandardMaterial({ color: 0xCD853F }); 
+                const newBlockMesh = new THREE.Mesh(blockGeom, blockMat);
+                newBlockMesh.position.set(gridX, finalY, gridZ);
+                newBlockMesh.castShadow = true; newBlockMesh.receiveShadow = true;
+                scene.add(newBlockMesh);
+                platforms.push({
+                    mesh: newBlockMesh, x: gridX, y: finalY, z: gridZ,
+                    width: GRID_UNIT_SIZE, height: GRID_UNIT_SIZE, depth: GRID_UNIT_SIZE,
+                    appearance: { type: selectedBlockType, color: 0xCD853F } 
+                }); console.log(`3D Block added.`);
+            }
+        } else if (currentEditorTool === 'enemy') {
+            let enemyExists = false; let existingEnemyIndex = -1;
+            for (let i = 0; i < enemies.length; i++) {
+                const e = enemies[i];
+                if (Math.abs(e.x - gridX) < 0.1 && Math.abs(e.y - finalY) < 0.1 && Math.abs(e.z - gridZ) < 0.1) {
+                    enemyExists = true; existingEnemyIndex = i; break; }
+            }
+            if (enemyExists && enemies[existingEnemyIndex].mesh) {
+                scene.remove(enemies[existingEnemyIndex].mesh);
+                enemies.splice(existingEnemyIndex, 1); console.log(`Enemy removed.`);
+            } else {
+                const newEnemyMesh = new THREE.Mesh(enemyGeometry, enemyMaterial); 
+                newEnemyMesh.position.set(gridX, finalY, gridZ);
+                newEnemyMesh.castShadow = true; scene.add(newEnemyMesh);
+                enemies.push({
+                    mesh: newEnemyMesh, x: gridX, y: finalY, z: gridZ,
+                    type: 'basic_patrol_x', speed: 0.02, direction: 1, patrolDistance: 3,
+                    initialX: gridX, initialY: finalY, initialZ: gridZ,
+                    width: GRID_UNIT_SIZE, height: GRID_UNIT_SIZE, depth: GRID_UNIT_SIZE 
+                }); console.log(`Enemy added.`);
             }
         }
-
-        // Camera follow player (horizontal)
-        const playerCenterX = player.x + player.width / 2;
-        if (playerCenterX > camera.x + canvas.width - camera.deadZoneX) {
-            camera.x = playerCenterX - (canvas.width - camera.deadZoneX);
-        }
-        else if (playerCenterX < camera.x + camera.deadZoneX) {
-            camera.x = playerCenterX - camera.deadZoneX;
-        }
-
-        const levelWidth = canvas.width * 2; 
-        if (camera.x < 0) {
-            camera.x = 0;
-        }
-        if (camera.x + canvas.width > levelWidth) {
-            // camera.x = levelWidth - canvas.width; 
-        }
-
-        // Collision detection with canvas boundaries
-        if (player.x < 0) {
-            player.x = 0;
-            player.dx = 0;
-        }
-        if (player.x + player.width > canvas.width && camera.x + canvas.width >= levelWidth) { // Stop at edge of level, not just canvas if camera is at end
-             player.x = levelWidth - player.width; // this was canvas.width - player.width;
-             player.dx = 0;
-        } else if (player.x + player.width > canvas.width && camera.x + canvas.width < levelWidth) {
-             // this is the case where player is at edge of screen but not edge of level
-        }
-
-
-        if (player.y < 0) {
-            player.y = 0;
-            player.dy = 0;
-        }
-
-        // Ground collision
-        player.grounded = false; 
-        platforms.forEach(platform => {
-            if (
-                player.x < platform.x + platform.width &&
-                player.x + player.width > platform.x &&
-                player.y + player.height < platform.y + platform.height && 
-                player.y + player.height + player.dy >= platform.y 
-            ) {
-                player.y = platform.y - player.height;
-                player.grounded = true;
-                player.isJumping = false;
-                player.dy = 0;
-            }
-        });
-        
-        // Update enemies
-        enemies.forEach(enemy => {
-            if (enemy.movementType === 'patrol') {
-                enemy.x += enemy.dx * enemy.speed;
-                const platformToCheck = platforms[0]; 
-                if (enemy.x > enemy.originalX + enemy.patrolRange || enemy.x < enemy.originalX - enemy.patrolRange) {
-                    enemy.dx *= -1; 
-                }
-                if (platformToCheck) {
-                    if (enemy.x < platformToCheck.x || enemy.x + enemy.width > platformToCheck.x + platformToCheck.width) {
-                        enemy.dx *= -1; 
-                        if (enemy.x < platformToCheck.x) {
-                            enemy.x = platformToCheck.x;
-                        }
-                        if (enemy.x + enemy.width > platformToCheck.x + platformToCheck.width) {
-                            enemy.x = platformToCheck.x + platformToCheck.width - enemy.width;
-                        }
-                    }
-                }
-            }
-        });
-
-        // Player-Enemy collision detection
-        enemies.forEach((enemy, index) => {
-            if (!enemy.isDefeated) { 
-                if (
-                    player.x < enemy.x + enemy.width &&
-                    player.x + player.width > enemy.x &&
-                    player.y < enemy.y + enemy.height &&
-                    player.y + player.height > enemy.y
-                ) {
-                    const playerBottom = player.y + player.height;
-                    const enemyTop = enemy.y;
-                    if (player.dy > 0 &&
-                        playerBottom > enemyTop && 
-                        playerBottom < enemyTop + enemy.height / 2 
-                       ) {
-                        enemy.isDefeated = true; 
-                        player.dy = -player.jumpStrength / 2; 
-                        console.log('Enemy stomped!');
-                    } else {
-                        console.log('Player hit by enemy!');
-                        player.x = 50;
-                        player.y = canvas.height - 100;
-                        player.dx = 0;
-                        player.dy = 0;
-                        player.isJumping = false;
-                        player.grounded = true; 
-                    }
-                }
-            }
-        });
-
-        enemies = enemies.filter(enemy => !enemy.isDefeated);
-
-        // Fall off screen
-        if (player.y + player.height > canvas.height) {
-             if (platforms.length === 1 && player.y > platforms[0].y + platforms[0].height + 50) { 
-                player.x = 50;
-                player.y = canvas.height - 100;
-                player.dx = 0;
-                player.dy = 0;
-                player.isJumping = false;
-                player.grounded = true;
-            } else if (platforms.length > 1 && player.y > canvas.height + 200) { // Fall off custom level
-                player.x = 50; // Or some other default start for loaded levels
-                player.y = canvas.height - 100;
-                player.dx = 0;
-                player.dy = 0;
-                player.isJumping = false;
-                player.grounded = true; // This might need to be smarter if start has no ground
-            }
-        }
-    } else if (gameMode === 'edit') {
-        // Editor mode updates (e.g., camera panning with arrow keys might be useful)
-        // For now, camera only moves in play mode.
     }
 }
 
-function draw() {
-    // Clear the canvas
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+function initThreeJS() {
+    scene = new THREE.Scene(); scene.background = new THREE.Color(0x87ceeb); 
+    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement); 
+    renderer.domElement.addEventListener('click', onEditorClick, false);
+    const planeGeom = new THREE.PlaneGeometry(100,100); planeGeom.rotateX(-Math.PI/2);
+    placementPlane = new THREE.Mesh(planeGeom, new THREE.MeshBasicMaterial({visible:false, side:THREE.DoubleSide}));
+    scene.add(placementPlane);
+    gridHelper = new THREE.GridHelper(100,100,0x888888,0x444444); 
+    gridHelper.position.y = 0.001; gridHelper.visible = false; scene.add(gridHelper);
 
-    // Save the current context state
-    ctx.save();
-
-    // Translate the context to simulate camera movement
-    ctx.translate(-camera.x, -camera.y);
-
-    // --- Draw all game objects relative to the camera ---
-
-    if (gameMode === 'edit') {
-        ctx.strokeStyle = 'rgba(0, 0, 0, 0.1)'; 
-        ctx.lineWidth = 1;
-        
-        const visibleLeft = camera.x;
-        const visibleTop = camera.y; 
-        const visibleRight = camera.x + canvas.width;
-        const visibleBottom = camera.y + canvas.height;
-
-        const gridStartX = Math.floor(visibleLeft / TILE_SIZE) * TILE_SIZE;
-        const gridStartY = Math.floor(visibleTop / TILE_SIZE) * TILE_SIZE;
-
-        for (let x = gridStartX; x < visibleRight; x += TILE_SIZE) {
-            ctx.beginPath();
-            ctx.moveTo(x, visibleTop); 
-            ctx.lineTo(x, visibleBottom);
-            ctx.stroke();
-        }
-        for (let y = gridStartY; y < visibleBottom; y += TILE_SIZE) {
-            ctx.beginPath();
-            ctx.moveTo(visibleLeft, y); 
-            ctx.lineTo(visibleRight, y);
-            ctx.stroke();
-        }
-    }
-
-    // Draw player
-    let appearance;
-    const stateAppearance = player.appearances[player.animationState];
-    if (player.animationState === 'run') {
-        appearance = stateAppearance[player.currentFrame];
-    } else { 
-        appearance = stateAppearance;
-    }
-    ctx.fillStyle = appearance.color;
-    ctx.fillRect(player.x, player.y, player.width, player.height);
-
-    // Draw platforms
-    platforms.forEach(platform => {
-        ctx.fillStyle = platform.appearance.color; 
-        ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
-    });
-
-    // Draw enemies
-    enemies.forEach(enemy => {
-        ctx.fillStyle = enemy.appearance.color;
-        ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
-    });
+    if (typeof THREE.OrbitControls === 'function') {
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true; controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false; controls.minDistance = 3; controls.maxDistance = 50;   
+        controls.target.set(0,1,0); controls.update(); camera.position.set(0,5,10); 
+    } else { console.warn("THREE.OrbitControls not found."); camera.position.set(0,5,15); camera.lookAt(0,1,0); }
     
-    // --- End of drawing game objects ---
-
-    // Restore the context to its original state
-    ctx.restore();
-
-    // UI elements that should not scroll
-    ctx.fillStyle = 'black';
-    ctx.font = '16px Arial';
-    ctx.textAlign = 'left';
-    if (gameMode === 'edit') {
-        ctx.fillText('Edit Mode - 0:Play | S:Save | L:Load', 10, 20);
-    } else {
-        ctx.fillText('Play Mode - Press 0 to Edit', 10, 20);
-    }
+    const ambientLight = new THREE.AmbientLight(0xffffff,0.6); scene.add(ambientLight);
+    const directionalLight = new THREE.DirectionalLight(0xffffff,0.8);
+    directionalLight.position.set(5,10,7.5); directionalLight.castShadow = true; scene.add(directionalLight);
+    
+    const groundGeom = new THREE.PlaneGeometry(100,100);
+    const groundMat = new THREE.MeshStandardMaterial({color:0x228B22, side:THREE.DoubleSide});
+    groundPlane = new THREE.Mesh(groundGeom, groundMat);
+    groundPlane.rotation.x = -Math.PI/2; groundPlane.position.y = 0; 
+    groundPlane.receiveShadow = true; scene.add(groundPlane);
+    
+    const playerGeom = new THREE.BoxGeometry(player.width,player.height,player.depth);
+    const playerMat = new THREE.MeshStandardMaterial({color:0x0077ff}); 
+    player.mesh = new THREE.Mesh(playerGeom, playerMat);
+    player.y = PLAYER_RESET_Y_OFFSET; // Use constant for initial Y
+    player.x = PLAYER_RESET_X;     // Use constant for initial X
+    player.z = PLAYER_RESET_Z;     // Use constant for initial Z
+    player.mesh.position.set(player.x,player.y,player.z);
+    player.mesh.castShadow = true; scene.add(player.mesh);
+    
+    window.addEventListener('resize', onWindowResize, false);
 }
 
-function gameLoop() {
-    update();
-    draw();
-    requestAnimationFrame(gameLoop); 
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
 }
 
-// Start the game loop
-gameLoop();
+function update() { 
+    if (gameMode === 'play') {
+        let intendedDx = 0; let intendedDz = 0;
+        if (keys.w) intendedDz = -player.speed; if (keys.s) intendedDz = player.speed;
+        if (keys.a) intendedDx = -player.speed; if (keys.d) intendedDx = player.speed;
+        player.dx = intendedDx; player.dz = intendedDz;
+
+        if (keys.space && player.grounded && !player.isJumping) {
+            player.dy = player.jumpStrength;
+            player.isJumping = true; player.grounded = false;
+        }
+        player.dy -= player.gravity;
+        let nextX = player.x + player.dx; let nextY = player.y + player.dy; let nextZ = player.z + player.dz;
+        player.grounded = false; 
+
+        platforms.forEach(platform => {
+            const tempPlayerCollider = { x: nextX, y: nextY, z: nextZ, width: player.width, height: player.height, depth: player.depth };
+            if (checkAABBCollision(tempPlayerCollider, platform)) {
+                const overlapX = (player.width/2 + platform.width/2) - Math.abs(nextX - platform.x);
+                const overlapY = (player.height/2 + platform.height/2) - Math.abs(nextY - platform.y);
+                const overlapZ = (player.depth/2 + platform.depth/2) - Math.abs(nextZ - platform.z);
+                if (overlapY < overlapX && overlapY < overlapZ) { 
+                    if (nextY > platform.y) { 
+                        nextY = platform.y + platform.height/2 + player.height/2;
+                        player.dy = 0; player.grounded = true; player.isJumping = false;
+                    } else { nextY = platform.y - platform.height/2 - player.height/2; player.dy = 0; }
+                } else if (overlapX < overlapY && overlapX < overlapZ) { 
+                    if (nextX < platform.x) nextX = platform.x - platform.width/2 - player.width/2;
+                    else nextX = platform.x + platform.width/2 + player.width/2;
+                    player.dx = 0;
+                } else { 
+                    if (nextZ < platform.z) nextZ = platform.z - platform.depth/2 - player.depth/2;
+                    else nextZ = platform.z + platform.depth/2 + player.depth/2;
+                    player.dz = 0;
+                }
+            }
+        });
+        player.x = nextX; player.y = nextY; player.z = nextZ;
+
+        const playerBottomY = player.y - player.height / 2;
+        if (playerBottomY <= 0 && !player.grounded) { 
+            player.y = PLAYER_RESET_Y_OFFSET; player.dy = 0;                 
+            player.grounded = true; player.isJumping = false;
+        }
+        
+        enemies.forEach(enemy => {
+            if (enemy.mesh) {
+                const enemyCollider = { x: enemy.x, y: enemy.y, z: enemy.z, width: enemy.width, height: enemy.height, depth: enemy.depth };
+                if (checkAABBCollision(player, enemyCollider)) {
+                    console.log("Player collided with an enemy!");
+                    player.x = PLAYER_RESET_X;
+                    player.y = PLAYER_RESET_Y_OFFSET;
+                    player.z = PLAYER_RESET_Z;
+                    player.dx = 0; player.dy = 0; player.dz = 0;
+                    player.grounded = true; player.isJumping = false;
+                    // alert("You hit an enemy! Player reset."); // Optional
+                }
+            }
+        });
+
+        enemies.forEach(enemy => {
+            if (enemy.type === 'basic_patrol_x') {
+                enemy.x += enemy.speed * enemy.direction;
+                if (Math.abs(enemy.x - enemy.initialX) >= enemy.patrolDistance) {
+                    enemy.direction *= -1; 
+                    enemy.x = enemy.initialX + (enemy.patrolDistance * enemy.direction); 
+                }
+            }
+            if (enemy.mesh) enemy.mesh.position.set(enemy.x, enemy.y, enemy.z);
+        });
+
+    } else if (gameMode === 'edit') { /* Editor logic */ }
+    
+    if (player.mesh) player.mesh.position.set(player.x, player.y, player.z);
+}
+
+function animate() { 
+    requestAnimationFrame(animate);
+    if (controls && controls.update) controls.update(); 
+    update(); 
+    renderer.render(scene, camera);
+}
+
+initThreeJS();
+animate();
+console.log("Player-enemy collision outcome (reset) implemented.");
