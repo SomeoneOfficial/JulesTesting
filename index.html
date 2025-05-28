@@ -2,14 +2,40 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>3D Platformer Game</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/utils/BufferGeometryUtils.js"></script>
 </head>
 <body>
     <h1>3D Platformer Game</h1>
+    
+    <div id="uiOverlay"> 
+        <button id="btnToggleEditor">EDIT</button>
+        <button id="btnSwitchTool">TOOL: BLOCK</button> 
+        <button id="btnSaveLevel">SAVE</button>
+        <button id="btnLoadLevel">LOAD</button>
+    </div>
+
+    <div id="mobileLeftControls"> 
+        <button id="btnForward">W</button>
+        <div id="leftRightButtons">
+            <button id="btnLeft">A</button>
+            <button id="btnRight">D</button>
+        </div>
+        <button id="btnBackward">S</button>
+    </div>
+
+    <div id="mobileRightControls"> 
+        <button id="btnJump">SPACE</button>
+    </div>
+
+    <div id="statusMessageContainer">
+        <p id="statusMessageText"></p>
+    </div>
+
     <!-- Canvas will be added by Three.js -->
     <script src="script.js"></script>
 </body>
