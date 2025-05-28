@@ -3,40 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>3D Platformer Game</title>
-    <link rel="stylesheet" href="style.css">
+    <title>3D Laser Shooter Game</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/utils/BufferGeometryUtils.js"></script>
+    <!-- Note: OrbitControls and BufferGeometryUtils are not included by default in this new setup.
+         We will add them if/when needed for the new game (e.g., OrbitControls for editor debug). -->
+    <link rel="stylesheet" href="style.css">
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; } /* Ensure canvas takes up full space if not handled by JS */
+    </style>
 </head>
 <body>
-    <h1>3D Platformer Game</h1>
-    
-    <div id="uiOverlay"> 
-        <button id="btnToggleEditor">EDIT</button>
-        <button id="btnSwitchTool">TOOL: BLOCK</button> 
-        <button id="btnSaveLevel">SAVE</button>
-        <button id="btnLoadLevel">LOAD</button>
-    </div>
-
-    <div id="mobileLeftControls"> 
-        <button id="btnForward">W</button>
-        <div id="leftRightButtons">
-            <button id="btnLeft">A</button>
-            <button id="btnRight">D</button>
-        </div>
-        <button id="btnBackward">S</button>
-    </div>
-
-    <div id="mobileRightControls"> 
-        <button id="btnJump">SPACE</button>
-    </div>
-
-    <div id="statusMessageContainer">
-        <p id="statusMessageText"></p>
-    </div>
-
-    <!-- Canvas will be added by Three.js -->
-    <script src="script.js"></script>
+    <!-- Content will be primarily managed by game.js through Three.js -->
+    <script type="module" src="game.js"></script> <!-- Use type="module" for modern JS features -->
 </body>
 </html>
