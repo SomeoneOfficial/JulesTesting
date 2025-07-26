@@ -1,0 +1,53 @@
+// @version=5
+strategy("5-Minute Options Strategy", overlay=true)
+
+// Stochastic
+length = input.int(14, minval=1, title="Stochastic Length")
+k = input.int(3, minval=1, title="Stochastic %K")
+d = input.int(3, minval=1, title="Stochastic %D")
+smoothK = ta.sma(ta.stoch(close, high, low, length), k)
+smoothD = ta.sma(smoothK, d)
+
+// MFI
+mfi_length = input.int(14, title="MFI Length")
+mfi = ta.mfi(close, mfi_length)
+
+// Bollinger Bands
+bb_length = input.int(20, minval=1, title="BB Length")
+bb_mult = input.float(2.0, minval=0.001, maxval=50, title="BB Multiplier")
+basis = ta.sma(close, bb_length)
+dev = bb_mult * ta.stdev(close, bb_length)
+upper = basis + dev
+lower = basis - dev
+bb_width = (upper - lower) / basis
+
+// RSI
+rsi_length = input.int(14, title="RSI Length")
+rsi = ta.rsi(close, rsi_length)
+
+// Entry conditions
+long_stoch = smoothK < 5 and smoothD < 5
+long_mfi = mfi > mfi[1] * 1.85 // MFI rose by 85%
+long_bb = bb_width > bb_width[1]
+long_rsi = rsi > 90 or rsi > rsi[2] * 1.5
+
+short_stoch = smoothK > 95 and smoothD > 95
+short_mfi = mfi < mfi[1] * 0.15 // MFI fell by 85%
+short_bb = bb_width < bb_width[1]
+short_rsi = rsi < 10 or rsi < rsi[2] * 0.5
+
+if (long_stoch and long_mfi and long_bb and long_rsi)
+    strategy.entry("Long", strategy.long)
+
+if (short_stoch and short_mfi and short_bb and short_rsi)
+    strategy.entry("Short", strategy.short)
+
+// Exit conditions
+if (close < basis)
+    strategy.close("Long")
+if (close > basis)
+    strategy.close("Short")
+
+// Alerts
+alertcondition(long_stoch and long_mfi and long_bb and long_rsi, title="Long Signal", message="Long signal triggered!")
+alertcondition(short_stoch and short_mfi and short_bb and short_rsi, title="Short Signal", message="Short signal triggered!")
